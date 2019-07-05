@@ -1,1 +1,1 @@
-# PyiPSM
+# PyCLiPSM
