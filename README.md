@@ -5,7 +5,7 @@
 2. Once the above OpenCL drivers are properly installed, you can use pip to install the PyOpenCL package (https://pypi.org/project/pyopencl/). 
 3. Run pyopencl_test.py to see a list of available OpenCL computing platforms/devices on your computer.
 4. Change configurations in the OPENCL_CONFIG variable in utility/config.py accordingly. As well as the OPENCL_CONFIG variable in PyCLiPSM_main.py.
-5. Run PyCLiPSM_main.py to get a sense of how to use PyCLiPSM.
+5. Run PyCLiPSM_main.py to get a sense of how to use PyCLiPSM (using sample data provided).
 
 ## Contact
 guiming.zhang@du.edu
