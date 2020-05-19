@@ -3,7 +3,7 @@
 
 #define N_SAMPLES 100
 
-__kernel void iPSM_Predict(const unsigned int nrows_evs, const unsigned int nrows_X, const unsigned int ncols_X, const unsigned int nrows_samples,
+__kernel void iPSM_Predict(const unsigned int nrows_X, const unsigned int ncols_X, const unsigned int nrows_samples,
                            const unsigned int mode, const float threshold, __global int* MSR_LEVELS, __global float* samples_SD_evs, __global float* SD_evs,
                            __global float* X, __global float* sample_X, __global float* sample_weights, __global float* sample_attributes,
                            __global float* X_predictions, __global float* X_uncertainties)
@@ -112,7 +112,7 @@ __kernel void iPSM_Predict(const unsigned int nrows_evs, const unsigned int nrow
 
 }
 
-__kernel void iPSM_Predict_Sequential(const unsigned int nrows_evs, const unsigned int nrows_X, const unsigned int ncols_X, const unsigned int nrows_samples,
+__kernel void iPSM_Predict_Sequential(const unsigned int nrows_X, const unsigned int ncols_X, const unsigned int nrows_samples,
                            const unsigned int mode, const float threshold, __global int* MSR_LEVELS, __global float* samples_SD_evs, __global float* SD_evs,
                            __global float* X, __global float* sample_X, __global float* sample_weights, __global float* sample_attributes,
                            __global float* X_predictions, __global float* X_uncertainties)

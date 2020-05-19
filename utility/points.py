@@ -23,7 +23,7 @@ class Points:
 
     ### Added 09/08/2017, optional
     covariates_at_points = None # to hold evironmental variates values at points
-             # avoid reading complete data layers to save memory (e.g., large study area)
+                                # avoid reading complete data layers to save memory (e.g., large study area)
 
     __header = None
     __sigTimestampe = 0 #signature timestamp, ms
@@ -47,6 +47,7 @@ class Points:
             f.close()
 
             data = np.asarray(data, 'float')
+            #print '....', np.isnan[data]
             #print data
 
             self.ids = data[:, 0]
@@ -89,16 +90,66 @@ class Points:
             self.predictions = np.zeros(N)
 
             #'''
-            idxs = np.random.choice(range(0, mask.getData().size), N)
+            data = mask.getData()
+            idxs = np.random.choice(range(0, data.size), N)
             for i in range(N):
                 print i
                 x, y = mask.pos2XY(idxs[i])
                 self.xycoords[i, 0] = x
                 self.xycoords[i, 1] = y
                 if val is None:
-                    self.attributes[i] = mask.getData()[idxs[i]]
+                    self.attributes[i] = data[idxs[i]]
                 else:
                     self.attributes[i] = val
+
+            self.size = N
+            self.__header = ['id', 'x', 'y', 'attribute', 'weight', 'prediction']
+        except Exception as e:
+            raise
+
+    def generateRandom_v2(self, N, masks, val = None):
+        ''' genrate N random points that is within the extent specified by mask (a raster)
+            with uniform probability
+        '''
+        print 'generating random points...'
+        try:
+
+            self.ids = range(0, N, 1)
+            self.attributes = np.zeros(N)
+            self.xycoords = np.zeros((N, 2))
+            self.weights = np.ones(N)
+            self.predictions = np.zeros(N)
+
+            #'''
+            datas = []
+            for mask in masks: datas.append(mask.getData2D())
+            cnt = 0
+            while cnt < N:
+                print cnt, '/', N
+                r = np.random.choice(range(0, masks[0].nrows), 1)
+                c = np.random.choice(range(0, masks[0].ncols), 1)
+                x, y = masks[0].rc2XY(r,c)
+
+                FLAG = True
+                for mask, data in zip(masks, datas):
+                    rx, cx = mask.xy2RC(x,y)
+                    if data[rx,cx] == mask.nodatavalue:
+                        FLAG = False
+                        break
+
+                if not FLAG:
+                    continue
+
+                if np.isnan(datas[0][r,c]):
+                    continue
+                    
+                #x, y = masks[0].rc2XY(r,c)
+                self.xycoords[cnt, 0] = x
+                self.xycoords[cnt, 1] = y
+                self.attributes[cnt] = datas[0][r,c]
+                if np.isnan(datas[0][r,c]):
+                    print r, c, datas[0][r,c]
+                cnt += 1
 
             self.size = N
             self.__header = ['id', 'x', 'y', 'attribute', 'weight', 'prediction']
@@ -282,6 +333,44 @@ class Points:
         except Exception as e:
             raise
 
+    #return random subset
+    def RandomSubset(self, N, probs=None):
+        ''' return a random subset of points of size N.
+            probs includes the selection probabilities
+        '''
+        pnts = Points()
+        pnts.__header = np.copy(self.__header)
+
+        if N > self.size: N = self.size
+
+        if probs is None:
+            probs = np.ones(self.size)
+        else:
+            probs = np.array(probs)
+        if probs.size != self.size:
+            print 'dimension of probs not equal to number of points'
+            sys.exit(1)
+
+        #probs = probs ** 2 # **1
+        probs = probs ** 1
+        if np.sum(probs) != 1.0:
+            probs = probs / np.sum(probs)
+
+        idxsA = np.random.choice(range(self.size), size=N, replace=False, p=probs)
+
+        pnts.ids = self.ids[idxsA]
+        pnts.xycoords = self.xycoords[idxsA]
+        pnts.attributes = self.attributes[idxsA]
+        pnts.weights = self.weights[idxsA]
+        pnts.predictions = self.predictions[idxsA]
+        pnts.size = pnts.ids.size
+
+        ## split covariates_at_points as well, if any
+        if self.covariates_at_points is not None:
+            pnts.covariates_at_points = self.covariates_at_points[idxsA]
+
+        return pnts
+
     def updateWeights(self, weights):
         ''' update weights of the points
         '''
@@ -315,15 +404,19 @@ class Points:
         except Exception as e:
             raise
 
-    def writeCSV(self, csvfn):
+    def writeCSV(self, csvfn, var_names = None):
         ''' write points to csv file
         '''
         try:
             f = open(csvfn, 'wb')
             writer = csv.writer(f)
             if self.covariates_at_points is not None and len(self.__header) == 6:
-                for i in range(self.covariates_at_points.shape[1]):
-                    self.__header.append('VAR'+str(i+1))
+                if var_names is None:
+                    for i in range(self.covariates_at_points.shape[1]):
+                        self.__header.append('VAR'+str(i+1))
+                else:
+                    for i in range(self.covariates_at_points.shape[1]):
+                        self.__header.append(var_names[i])
             writer.writerow(self.__header)
             data = np.concatenate((np.array([self.ids]).T, self.xycoords), axis = 1)
             data = np.concatenate((data, np.array([self.attributes]).T), axis = 1)

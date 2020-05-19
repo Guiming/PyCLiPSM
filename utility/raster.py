@@ -5,8 +5,12 @@ import numpy as np
 import numpy.ma as ma
 import os, time, sys
 import matplotlib as mpl
+mpl.use('Qt4Agg') # https://stackoverflow.com/questions/53529044/importerror-no-module-named-pyqt5
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
+
+import gdal, gdalconst, osr
+
 import conf, util, gaussian_kde
 
 class Raster:
@@ -21,11 +25,15 @@ class Raster:
     __measurement_level = None # nominal, ordinal, interval, ratio, count
     msrInt = None # 0, 1, 2, 3, 4
     filename = None
-    minmax = None
     density = None
 
     density_sample = None
     density_sample_weighted = None
+
+    min = None
+    max = None
+    mean = None
+    std = None
 
     def __init__(self, msrlevel = conf.MSR_LEVEL_RATIO):
         self.__sigTimestampe = int(time.time()*1000) # in ms
@@ -36,106 +44,12 @@ class Raster:
             if conf.MSR_LEVELS[key] == msrlevel:
                 self.msrInt = int(key)
 
-    def __readAsciiHeader(self, asciifn):
-        ''' reads header info. from a ascii file
-        '''
-        try:
-            f = open(asciifn, 'r')
-            self.filename = os.path.basename(asciifn)
-            line = f.readline()
-            counter = 0
-            while counter < 6:
-                #print counter, line.split('\n')[0].split(' ')
-                vals = line.split('\n')[0].split(' ')
-                cnt = 1
-                val = vals[-1]
-                while val == '':
-                    val = vals[-1 - cnt]
-                    cnt += 1
-                if counter == 0: self.ncols = int(val)
-                if counter == 1: self.nrows = int(val)
-                if counter == 2: self.xllcorner = float(val)
-                if counter == 3: self.yllcorner = float(val)
-                if counter == 4: self.cellsize = float(val)
-                if counter == 5: self.nodatavalue = float(val)
-                counter += 1
-                line = f.readline()
-            f.close()
-
-            # read prj info
-            prjfn = asciifn.split('.asc')[0] + '.prj'
-            if os.path.isfile(prjfn):
-                if conf.DEBUG_FLAG: print 'prj file exists'
-                self.__prjString = []
-                f = open(prjfn, 'r')
-                line = f.readline()
-                while len(line) > 0:
-                    self.__prjString.append(line)
-                    line = f.readline()
-                f.close()
-                self.__prjString = np.array(self.__prjString)
-
-        except Exception as e:
-            raise
-
-    def __readAsciiBody(self, asciifn):
-        ''' reads data body from a ascii file
-        '''
-        try:
-            # read data body
-            self.__data2D = []
-            self.__data2D = np.loadtxt(asciifn, skiprows=6)
-
-            # check for potential dimension mismatch
-            dim = np.shape(self.__data2D)
-            if dim[0] != self.nrows or dim[1] != self.ncols:
-                print dim
-                print 'dimension mismatch with header info.'
-                sys.exit(1)
-
-            # serialize 2d data to 1d [exclusing NoData values]
-            self.__serialize2Dto1D()
-
-        except Exception as e:
-            raise
-
-    ## faster alternative
-    def __readAsciiBody_panda(self, asciifn):
-        ''' reads data body from a ascii file
-        '''
-        try:
-            # read data body
-            self.__data2D = []
-            import pandas
-            #tmp = pandas.read_table(asciifn, header = None, sep=' ', skiprows=6)
-            tmp = pandas.read_csv(asciifn, header = None, sep=' ', skiprows=6)
-            #print type(tmp)
-            #print tmp
-
-            tmp = tmp.as_matrix()[:,:]
-            if len(tmp[0]) == self.ncols:
-                self.__data2D = tmp
-            else:
-                self.__data2D = tmp[:,0:self.ncols]
-
-            # check for potential dimension mismatch
-            dim = np.shape(self.__data2D)
-            if dim[0] != self.nrows or dim[1] != self.ncols:
-                #print dim
-                print 'dimension mismatch with header info.'
-                sys.exit(1)
-
-            # serialize 2d data to 1d [exclusing NoData values]
-            self.__serialize2Dto1D()
-
-        except Exception as e:
-            raise
-
     def __serialize2Dto1D(self):
         ''' private member function
             serialize raster data from 2d [including NoData values] to 1d [excluding NoData values]
         '''
         try:
+            '''
             self.__data1D = []
             # serialize non-NoData values
             for row in self.__data2D:
@@ -143,6 +57,9 @@ class Raster:
                     if val != self.nodatavalue:
                         self.__data1D.append(val)
             self.__data1D = np.array(self.__data1D)
+            '''
+            tmp = self.__data2D.flatten()
+            self.__data1D = tmp[tmp != self.nodatavalue]
 
         except Exception as e:
             raise
@@ -167,19 +84,67 @@ class Raster:
         except Exception as e:
             raise
 
-    def readFromAscii(self, asciifn, pdf = True):
-        ''' create a raster oject from reading a .asc file
+    def readRasterGDAL(self, fn, pdf = False):
+        ''' Use GDAL for reading raster
         '''
-        print 'started reading', asciifn
+        # this allows GDAL to throw Python Exceptions
+        gdal.UseExceptions()
+        print 'started reading', fn
         t0 = time.time()
-        self.__readAsciiHeader(asciifn)
-        #self.__readAsciiBody(asciifn)
-        self.__readAsciiBody_panda(asciifn)
+        self.filename = os.path.basename(fn)
+
+        try:
+            # open dataset
+            ds = gdal.Open(fn, gdalconst.GA_ReadOnly)
+        except RuntimeError, e:
+            print e
+            sys.exit(1)
+
+        '''
+        rasterSRS = osr.SpatialReference()
+        rasterSRS.ImportFromWkt(ds.GetProjection())
+        self.__prjString = rasterSRS.ExportToWkt()
+        '''
+        self.__prjString = ds.GetProjection()
+
+
+        #print self.__prjString
+        gtrsfm = ds.GetGeoTransform()
+
+        self.xllcorner = gtrsfm[0]
+
+        self.cellsize = gtrsfm[1]
+
+        try:
+            band_num = 1
+            srcband = ds.GetRasterBand(band_num)
+        except RuntimeError, e:
+            # for example, try GetRasterBand(10)
+            print 'Band ( %i ) not found' % band_num
+            print e
+            sys.exit(1)
+
+        #print 'band.getstatistics():', srcband.GetStatistics(0,1)
+        self.min, self.max, self.mean, self.std = srcband.GetStatistics(0,1)
+
+        self.nodatavalue = srcband.GetNoDataValue()
+        self.__data2D = srcband.ReadAsArray()
+
+        self.nrows, self.ncols = self.__data2D.shape
+        self.yllcorner = gtrsfm[3] + gtrsfm[5] * self.nrows
+
+        self.__serialize2Dto1D()
+
+        # to save space?
+        #self.__data2D = None
+
+        # close dataset
+        ds = None
+
         if pdf:
             self.__computePopulationDistribution()
 
-        print 'done reading took', time.time() - t0, 's'
-        #self.printInfo()
+        print 'done reading took', time.time()-t0, 's'
 
     def getData(self):
         ''' return a deep copy of the serialized 1d data
@@ -194,9 +159,9 @@ class Raster:
     def __computePopulationDistribution(self):
         ''' compute frequency distributions histogram for NOMINAL/ORDINAL or pdf for INTERVAL/RATIO
         '''
-        xmin = min(self.__data1D)
-        xmax = max(self.__data1D)
-        self.minmax = [xmin, xmax]
+        print 'computePopulationDistribution() called'
+        xmin = self.min
+        xmax = self.max
 
         if self.__measurement_level in [conf.MSR_LEVEL_NOMINAL, conf.MSR_LEVEL_ORDINAL]:
             y, x = np.histogram(self.__data1D, range = (xmin-0.5, xmax+0.5), bins = int(xmax-xmin)+1, density = True)
@@ -218,13 +183,10 @@ class Raster:
     def computeSampleDistribution(self, points):
         ''' compute sample frequency distributions histogram for NOMINAL/ORDINAL or pdf for INTERVAL/RATIO
         '''
-        if self.minmax is None:
-            xmin = min(self.__data1D)
-            xmax = max(self.__data1D)
-            self.minmax = [xmin, xmax]
+        print 'computeSampleDistribution() called'
 
-        xmin = self.minmax[0]
-        xmax = self.minmax[1]
+        xmin = self.min
+        xmax = self.max
         #print xmin, xmax
 
         vals = util.extractCovariatesAtPoints([self], points)[0]
@@ -260,6 +222,7 @@ class Raster:
             print 'cannot deserialize 1D to 2D, too many data'
             sys.exit(1)
         try:
+            '''
             idx = 0
             for row in range(self.nrows):
                 for col in range(self.ncols):
@@ -267,7 +230,13 @@ class Raster:
                     if val != self.nodatavalue:
                         self.__data2D[row][col] = data1d[idx]
                         idx += 1
+            '''
+            self.__data2D[self.__data2D != self.nodatavalue] = data1d
             self.__data1D = np.copy(data1d)
+
+
+            self.__computeStatistics()
+
             if self.density is not None: self.__computePopulationDistribution()
 
         except Exception as e:
@@ -284,10 +253,20 @@ class Raster:
         try:
             self.__data2D = np.copy(data2d)
             self.__serialize2Dto1D()
+
+            self.__computeStatistics()
+
             if self.density is not None: self.__computePopulationDistribution()
 
         except Exception as e:
             raise
+
+    def __computeStatistics(self):
+        if self.__data1D.size > 2:
+            self.min = self.__data1D.min()
+            self.max = self.__data1D.max()
+            self.mean = self.__data1D.mean()
+            self.std = self.__data1D.std()
 
     def getMsrLevel(self):
         ''' return measurement level
@@ -311,47 +290,59 @@ class Raster:
             raster.cellsize = self.cellsize
             raster.nodatavalue = self.nodatavalue
 
+            raster.min = self.min
+            raster.max = self.max
+            raster.mean = self.mean
+            raster.std = self.std
+
             raster.__data2D = np.copy(self.__data2D)
             raster.__data1D = np.copy(self.__data1D)
 
             raster.filename = self.filename
 
             if self.__prjString is not None:
-                raster.__prjString = np.copy(self.__prjString)
+                raster.__prjString = self.__prjString #np.copy(self.__prjString)
 
             return raster
         except Exception as e:
             raise
 
-    def writeAscii(self, asciifn = None):
-        ''' write raster to ascii file
+    def writeRasterGDAL(self, fn = None):
+        '''write raster using gdal
         '''
+        # only write geotiff
+        if fn is None:
+            fn = self.filename + '.tif'
+        if fn[-4:] != '.tif':
+            fn += 'tif'
+
+        # this allows GDAL to throw Python Exceptions
+        gdal.UseExceptions()
+        #print 'started writing', fn
+        #t0 = time.time()
+        #print self.__prjString
         try:
-            if asciifn is None:
-                asciifn = self.filename + '.asc'
+            driver = gdal.GetDriverByName('GTiff')
+            outRaster = driver.Create(fn, self.ncols, self.nrows, 1, gdal.GDT_Float32, options = [ 'COMPRESS=LZW', 'BIGTIFF=YES' ])
+            outRaster.SetGeoTransform((self.xllcorner, self.cellsize, 0, self.cellsize * self.nrows + self.yllcorner, 0, -1 * self.cellsize))
+            outband = outRaster.GetRasterBand(1)
+            outband.SetNoDataValue(self.nodatavalue)
+            outband.WriteArray(self.getData2D())
 
-            f = open(asciifn, 'w')
-            # write header
-            f.write('ncols ' + str(self.ncols) + '\n')
-            f.write('nrows ' + str(self.nrows) + '\n')
-            f.write('xllcorner ' + str(self.xllcorner) + '\n')
-            f.write('yllcorner ' + str(self.yllcorner) + '\n')
-            f.write('cellsize ' + str(self.cellsize) + '\n')
-            f.write('NODATA_value ' + str(self.nodatavalue) + '\n')
+            if np.sum(self.getData2D() != self.nodatavalue) > 2:
+                stats = outband.GetStatistics(0, 1)
+                outband.SetStatistics(stats[0], stats[1], stats[2], stats[3])
 
-            # write data
-            np.savetxt(f,self.__data2D)
-            f.close()
+            outRasterSRS = osr.SpatialReference()
+            outRasterSRS.ImportFromWkt(self.__prjString)
+            outRaster.SetProjection(outRasterSRS.ExportToWkt())
+            outband.FlushCache()
 
-            if self.__prjString is not None:
-                prjfn = asciifn.split('.asc')[0] + '.prj'
-                f = open(prjfn, 'w')
-                for line in self.__prjString:
-                    f.write(line)
-                f.close()
+        except RuntimeError, e:
+            print e
+            sys.exit(1)
 
-        except Exception as e:
-            raise
+        #print 'writing ', fn, 'took', time.time()-t0, 's'
 
     def printInfo(self):
         ''' print out basic info.
@@ -367,10 +358,16 @@ class Raster:
 
         print '------STATS----------------------'
         print 'measurement_level', self.__measurement_level, self.msrInt
+        '''
         print 'min', np.min(self.__data1D)
         print 'max', np.max(self.__data1D)
         print 'mean', np.mean(self.__data1D)
         print 'std', np.std(self.__data1D)
+        '''
+        print 'min', self.min
+        print 'max', self.max
+        print 'mean', self.mean
+        print 'std', self.std
 
         '''
         print '------DATA----------------------'
@@ -447,3 +444,64 @@ class Raster:
         '''
         r, c = self.pos2RC(pos)
         return self.rc2XY(r, c)
+
+    def createRaster(self, data, xoff, yoff, geotransform, projection, nodata=-9999.0, filename='out.tif'):
+        '''create raster from a tile read from a larger raster
+            relative location is represented by xoff (col), yoff (row)
+        '''
+        self.filename = filename
+        self.__prjString = projection
+
+        self.nrows, self.ncols = data.shape
+        self.cellsize = geotransform[1]
+
+        self.xllcorner = geotransform[0] + self.cellsize * xoff
+        self.yllcorner = geotransform[3] - self.cellsize * (yoff + self.nrows)
+
+        self.nodatavalue = nodata
+        self.__data2D = np.copy(data)
+
+        self.__serialize2Dto1D()
+        self.__computeStatistics()
+
+def main():
+    ''' TEST DRIVER
+    '''
+    '''
+    cellsize = 10
+    ascDir = r'D:\OneDrive - University of Denver\Data\Pyclipsm\heshan\asc'
+    asciifn = 'elevation_' + str(cellsize) + '.asc'
+    tiffn = asciifn.replace('.asc','.tif')
+    '''
+    '''
+    rst = Raster()
+    rst.readRasterGDAL(ascDir + os.sep + asciifn)
+    rst.printInfo()
+    rst.writeRasterGDAL(ascDir + os.sep + tiffn)
+    '''
+    '''
+    rst = Raster()
+    rst.readRasterGDAL('D:/OneDrive - University of Denver/Data/Pyclipsm/anhui/covariates/90m/acc10_n_std.tif')
+    rst.printInfo()
+    #rst.writeRasterGDAL(ascDir + os.sep + r'tif\test2.tif')
+    '''
+    Dir = r'D:\OneDrive - University of Denver\Data\Pyclipsm\anhui\covariates\10m'
+    rst = Raster()
+    rst.readRasterGDAL(Dir + os.sep + 'geo_ma.tif')
+    rst.xllcorner = 301603.878
+    rst.yllcorner = 3253219.08
+    rst.printInfo()
+    rst.writeRasterGDAL(Dir + os.sep + 'geo_ma1.tif')
+
+    rst = Raster()
+    rst.readRasterGDAL(Dir + os.sep + 'ndvi_std.tif')
+    rst.xllcorner = 301603.878
+    rst.yllcorner = 3253219.08
+    rst.printInfo()
+    rst.writeRasterGDAL(Dir + os.sep + 'ndvi_std1.tif')
+
+
+if __name__ == "__main__":
+    T0 = time.time()
+    main()
+    print 'IN TOTAL IT TOOK', time.time() - T0, 's\n\n'
