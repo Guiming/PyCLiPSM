@@ -4,7 +4,7 @@
 1. Install GPU drivers. If you are using NVIDIA GPUs, OpenCL support is included in the driver (https://developer.nvidia.com/opencl). If you are using AMD GPU/CPU, install appropriate OpenCL drivers from ADM (This link provides helpful pointers https://github.com/microsoft/LightGBM/issues/1342). If you are using Intel GPU/CPU, install appropriate OpenCL drivers from Intel (e.g., https://software.intel.com/en-us/articles/opencl-drivers).    
 2. It's assumed that you already have Python (version 2.7) installed. Anaconda is recommended for installing Python https://www.anaconda.com/distribution/. 
 3. Install Python GDAL (https://pypi.org/project/GDAL/).
-4. Once OpenCL drivers and Python, Python GDAL are properly installed, you can use pip to install the PyOpenCL package (https://pypi.org/project/pyopencl/). 
+4. Once OpenCL drivers, Python and Python GDAL are properly installed, you can use pip to install the PyOpenCL package (https://pypi.org/project/pyopencl/). 
 5. Run pyopencl_test.py to test if PyOpenCL is working properly: python pyopencl_test.py.
 
 ## Run PyCLiPSM with sample data:
