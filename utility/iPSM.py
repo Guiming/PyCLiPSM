@@ -1,5 +1,5 @@
 # Author: Guiming Zhang
-# Last update: August 8 2019
+# Last update: May 19 2020
 
 import os, time, sys, psutil, math
 import numpy as np
@@ -286,7 +286,6 @@ class iPSM:
                 print 'dimension mismatch in computing similarity in iPSM'
                 sys.exit(1)
 
-            # Guiming 3/31/2019
             msr_levels = []
             if conf.NAIVE:
                 evs = np.zeros((self.__envrasters[0].getData().size, len(self.__envrasters)))
@@ -295,19 +294,13 @@ class iPSM:
             for i in range(len(self.__envrasters)):
                 if conf.NAIVE:
                     evs[:, i] = self.__envrasters[i].getData().T
-                # Guiming 3/31/2019
                 msr_levels.append(self.__envrasters[i].getMsrLevel())
                 SD_evs[i] = self.__envrasters[i].std
                 AVG_evs[i] = self.__envrasters[i].mean
 
-            #SD_evs = np.std(evs, axis = 0)
-
-
             NROWS = np.shape(X)[0]
 
-            #REVS = evs.shape[0]
             REVS = self.__envrasters[0].getData().size
-            #AVG_evs = np.mean(evs, axis = 0)
             SUM_DIF_SQ_AVG = REVS * SD_evs**2
 
             samples_evs = util.extractCovariatesAtPoints(self.__envrasters, self.__soilsamples)
@@ -414,26 +407,11 @@ class iPSM:
                 SD_evs[i] = self.__envrasters[i].std
 
             # standard deviation of each variable (over the whole study area)
-            #SD_evs = np.std(evs, axis = 0).reshape(c_evs).astype(np.float32)
             SD_evs = SD_evs.reshape(c_evs).astype(np.float32)
             #print SD_evs, SD_evs.shape
             evs = evs.reshape(r_evs*c_evs).astype(np.float32)
             #print evs, evs.shape, r_evs, c_evs
 
-            '''
-            # covariates values at prediction locations
-            if X is None: # if X is not provided, make prediction for the whole study area
-                X = []
-                for raster in self.__envrasters:
-                    X.append(raster.getData())
-                X = np.array(X).T
-
-            r, c = np.shape(X)
-            nrows_X = np.int32(r)
-            ncols_X = np.int32(c)
-
-            X = X.reshape(nrows_X*ncols_X).astype(np.float32)
-            '''
             # covariates values at prediction locations
             if X is None: # if X is not provided, make prediction for the whole study area
                 r, c = r_evs, c_evs
@@ -588,17 +566,7 @@ class iPSM:
                 Std_evs[i] = self.__envrasters[i].std
                 AVG_evs[i] = self.__envrasters[i].mean
 
-            #evs = np.zeros((r_evs, c_evs))
-            #for i in range(len(self.__envrasters)):
-            #    evs[:, i] = self.__envrasters[i].getData().T
-
-            # standard deviation of each variable (over the whole study area)
-            #Std_evs = np.std(evs, axis = 0) ## added on Feb 26 2018
-            #print '\nCOVARIATE STD:', Std_evs, '\n'
             SD_evs = Std_evs.reshape(c_evs).astype(np.float32)
-            #print 'SD_evs', SD_evs.shape, SD_evs
-            #print 'phase 1 took', time.time() - t0, 's'
-            #tx = time.time()
 
             # covariates values at prediction locations
             if X is None: # if X is not provided, make prediction for the whole study area
@@ -610,43 +578,26 @@ class iPSM:
             r, c = np.shape(X)
             nrows_X = np.int32(r)
             ncols_X = np.int32(c)
-            #print 'phase 2.1 took', time.time() - tx, 's'
-            #tx = time.time()
 
             X = X.reshape(nrows_X*ncols_X).astype(np.float32)
-            #print X, X.shape, nrows_X, ncols_X
-            #print 'phase 2.2 took', time.time() - tx, 's'
-            #tx = time.time()
 
             MSRLEVES = self.__msrInts.reshape(c_evs).astype(np.int32)
             #print MSRLEVES, MSRLEVES.shape
 
             if not self.__samples_stats_collected:
-                #t0 = time.time()
                 # covariates values at sample locations
                 if self.__soilsamples.covariates_at_points is None:
                     samples_X = util.extractCovariatesAtPoints(self.__envrasters, self.__soilsamples)
                 else:
                     samples_X = self.__soilsamples.covariates_at_points.T#[0:c_evs].T ## prone to bug
-                #print '\n COVARIATE VALUES AT SAMPLE LOCATIONS:\N', samples_X
                 nrows_samples = np.int32(samples_X.shape[1])
                 self.__nrows_samples = nrows_samples
-                #print samples_X.shape
-                #print 'prepare samples took', time.time() - t0, 's'
 
                 samples_SD_evs = np.zeros((nrows_samples, c_evs))
-                #AVG_evs = np.mean(evs, axis = 0)
-                #print '\nCOVARIATE MEAN:', AVG_evs, '\n'
-                #SUM_DIF_SQ_AVG = r_evs * Std_evs**2
-
-                #SUM_DIF_AVG = np.sum(evs - AVG_evs, axis = 0) ## == 0.0!!
-                #print 'SUM_DIF_AVG', SUM_DIF_AVG
 
                 for i in range(nrows_samples):
                     delta = samples_X[:,i].T - AVG_evs
-                    #tmp = SUM_DIF_SQ_AVG  + r_evs * delta**2
                     tmp = Std_evs**2  + delta**2
-                    #samples_SD_evs[i] = np.sqrt(tmp/r_evs)
                     samples_SD_evs[i] = np.sqrt(tmp)
 
                 #print '\nsamples_SD_evs:', samples_SD_evs, '\n'
@@ -665,16 +616,10 @@ class iPSM:
 
                 self.__samples_stats_collected = True
 
-            #print 'sample_attributes:', sample_attributes.shape, sample_attributes.min()
-            #print 'phase 3 took', time.time() - tx, 's'
-            #tx = time.time()
-
             # hold predictions for instances in X
             X_predictions = np.zeros(nrows_X).astype(np.float32)
             # hold prediction uncertainties for instances in X
             X_uncertainties = np.zeros(nrows_X).astype(np.float32)
-            #print 'phase 4 took', time.time() - tx, 's'
-            #tx = time.time()
             print 'preparation on HOST took', time.time() - t0, 's'
 
             ##### config computing platform and device
@@ -682,13 +627,6 @@ class iPSM:
                 #print platform.name
                 if platform.name == conf.OPENCL_CONFIG['Platform']:
                     PLATFORM = platform
-                    '''if os.environ['COMPUTERNAME'] == 'DU-7CQTHQ2' and 'NVIDIA CUDA' in platform.name:
-                        print '!!!'
-                        #for device in platform.get_devices():
-                        #    if device.name == conf.OPENCL_CONFIG['Device']:
-                        DEVICE = platform.get_devices()[0]
-                        break
-                    else:'''
                     # Print each device per-platform
                     for device in platform.get_devices():
                         #print device.name
@@ -739,7 +677,6 @@ class iPSM:
 
             print X_predictions.shape
 
-            ## improved version, 09/06/2017
             if not single_cpu:
                 t0 = time.time()
                 completeEvent = \
@@ -752,8 +689,6 @@ class iPSM:
                 print 'kernel took', t1 - t0, 's'
                 #print queue.finish()
 
-
-            ## added on Oct. 7, 2018 [sequential version - CPU]
             else:
                 print 'SINGLE_CPU iPSM.predict_opencl() called'
                 t0 = time.time()
@@ -811,9 +746,6 @@ class iPSM:
             if X is not None: print 'X SIZE:', X.nbytes / 1024.0**2, 'MB'
             print 'SINGLE_CPU:', single_cpu
 
-            #if (X is not None and X.nbytes > device_mem_quota) \
-            #    or (X is None and self.__env_data_size > device_mem_quota): #conf.DEVICE_TYPE == 'GPU' and (
-
             if X is None: ## predict map
                 N_LOCS = self.__envrasters[0].getData().size
                 X = []
@@ -825,18 +757,11 @@ class iPSM:
 
             y = np.zeros((N_LOCS, 2))
 
-            #N_CHUNKS = int(X.nbytes * 1.0 / device_mem_quota + 1.0)
-            #conf.CL_CHUNK_SIZE = int(X.nbytes / X[0].nbytes / N_CHUNKS + 1.0) ## number of rows in X
-
             ## CHUNK_SIZE SHOULD BE MULTIPLE OF DEVICE_MAX_WORK_ITEM_SIZES[0], e.g., x 1024
             if N_LOCS <= conf.DEVICE_MAX_WORK_ITEM_SIZES[0]:
                 N_CHUNKS = 1
                 conf.CL_CHUNK_SIZE = N_LOCS
             else:
-                #N_CHUNKS = max(2, int(math.ceil(X.nbytes/device_mem_quota)))
-                #conf.CL_CHUNK_SIZE = conf.DEVICE_MAX_WORK_ITEM_SIZES[0] * int(math.floor(N_LOCS * 1.0 / N_CHUNKS / conf.DEVICE_MAX_WORK_ITEM_SIZES[0]))
-                #print conf.DEVICE_MAX_WORK_ITEM_SIZES[0]
-                #print int(math.floor(min(device_mem_quota, X.nbytes) / X[0].nbytes / conf.DEVICE_MAX_WORK_ITEM_SIZES[0]))
                 conf.CL_CHUNK_SIZE = conf.DEVICE_MAX_WORK_ITEM_SIZES[0] * int(math.floor(min(device_mem_quota, X.nbytes) / X[0].nbytes / conf.DEVICE_MAX_WORK_ITEM_SIZES[0]))
                 N_CHUNKS = int(math.ceil(N_LOCS * 1.0 / conf.CL_CHUNK_SIZE))
 
@@ -859,9 +784,6 @@ class iPSM:
 
                 n_accum_locs += conf.CL_CHUNK_SIZE
                 counter += 1
-            #else:
-            #    print 'predict_opencl_atom() was called'
-            #    y = self.predict_opencl_atom(X, predict_class, single_cpu, opencl_config)
 
             return y
 

@@ -1,5 +1,5 @@
 # Author: Guiming Zhang
-# Last update: April 14 2020
+# Last update: May 15 2020
 
 ## iPSM implementation accommodating covariates read in tiles
 ## i.e., covariate layers do not need to be loaded into the main memory entirely
@@ -8,7 +8,6 @@
 
 import os, time, sys, psutil, math
 import numpy as np
-#from pathos.multiprocessing import ProcessingPool as Pool
 
 import pyopencl as cl
 import gdalwrapper, raster, points, util, conf
@@ -25,10 +24,6 @@ class iPSM:
     __uncthreshold = 1.0 # uncertainty threshold below which prediction is made
 
     __sigTimestampe = 0 #signature timestamp, ms
-
-    #__env_data_size = 0  ## size of 1d covariate data
-    #__env_data2D_size = 0 ## size of 2d covariate data
-
     __single_cpu = False ## run predict_opencl() on single cpu core?
 
 
@@ -36,10 +31,7 @@ class iPSM:
         self.__sigTimestampe = int(time.time()*1000) # in ms
 
         self.__tileRasterReader = gdalwrapper.tiledRasterReader(covariatesfn, xsize = conf.TILE_XSIZE, ysize = conf.TILE_YSIZE)
-        #print self.__tileRasterReader.fileList
-
         self.__msrInts = np.copy(self.__tileRasterReader.measurement_level_ints)
-        #print '\nMEASUREENT LEVELS:', self.__msrInts, '\n'
 
         soilsamples = points.Points()
         t0 = time.time()
@@ -48,15 +40,11 @@ class iPSM:
         ## Extract covairate values at sample locations, if missing in the sample file
         if soilsamples.covariates_at_points is None:
             soilsamples.covariates_at_points = np.zeros((soilsamples.size, self.__tileRasterReader.nbands))
-            #tx = time.time()
             for i in range(soilsamples.size):
                 t0 = time.time()
                 soilsamples.covariates_at_points[i] = self.__tileRasterReader.extractByXY(soilsamples.xycoords[i][0], soilsamples.xycoords[i][1]).flatten()
                 conf.TIME_KEEPING_DICT['parts']['read'].append(time.time()-t0)
-            #print 'covariates_at_points took', time.time()-tx, 's\n'
         self.__soilsamples = soilsamples
-        #print '\n COVARIATE VALUES AT SAMPLE LOCATIONS:\N', soilsamples.covariates_at_points.T
-
         self.__uncthreshold = uncthreshold
 
         if outfns is None:
@@ -81,91 +69,42 @@ class iPSM:
         print 'predict_opencl_atom() was called'
         try:
             t0 = time.time()
-            ##### prepare data
-            # covariates values over the whole study area
-            #r_evs = np.int32(self.__envrasters[0].getData().size)
             c_evs = np.int32(self.__tileRasterReader.nbands)
-            #evs = np.zeros((r_evs, c_evs))
-            #for i in range(len(self.__envrasters)):
-            #    evs[:, i] = self.__envrasters[i].getData().T
 
             # standard deviation of each variable (over the whole study area)
-            #Std_evs = np.std(evs, axis = 0) ## added on Feb 26 2018
             Std_evs = self.__tileRasterReader.statistics[:,3]
-            #Std_evs = np.ones(self.__tileRasterReader.nbands)
-            #Std_evs = np.array([1.00066609, 1.00001052, 0.99995359, 4.16511565, 0.99987914, 1.00017957,\
-            #                    0.99983517, 1.00191759, 0.99992001, 0.99954686, 1.0005749, 1.00059639])
             SD_evs = Std_evs.reshape(c_evs).astype(np.float32)
-            #print '\nCOVARIATE STD:', SD_evs, '\n'
-            #print 'SD_evs', SD_evs.shape, SD_evs
-
-            # covariates values at prediction locations
-            #if X is None: # if X is not provided, make prediction for the whole study area
-            #    X = []
-            #    for raster in self.__envrasters:
-            #        X.append(raster.getData())
-            #    X = np.array(X).T
 
             r, c = np.shape(X)
             nrows_X = np.int32(r)
             ncols_X = np.int32(c)
 
             X = X.reshape(nrows_X*ncols_X).astype(np.float32)
-            #print X, X.shape, nrows_X, ncols_X
 
-            #MSRLEVES = self.__msrInts.reshape(c_evs).astype(np.int32)
             MSRLEVES = self.__tileRasterReader.measurement_level_ints.reshape(c_evs).astype(np.int32)
-            #print MSRLEVES, MSRLEVES.shape
 
             if not self.__samples_stats_collected:
-                #t0 = time.time()
-                # covariates values at sample locations
-                #if self.__soilsamples.covariates_at_points is None:
-                #    samples_X = util.extractCovariatesAtPoints(self.__envrasters, self.__soilsamples)
-                #else:
-                #    samples_X = self.__soilsamples.covariates_at_points[0:c_evs].T ## prone to bug
-                #samples_X = self.__soilsamples.covariates_at_points[0:c_evs].T
                 samples_X = self.__soilsamples.covariates_at_points.T
-                #print 'samples_X.shape:', samples_X.shape
 
                 nrows_samples = np.int32(samples_X.shape[1])
                 self.__nrows_samples = nrows_samples
-                #print samples_X.shape
-                #print 'prepare samples took', time.time() - t0, 's'
 
                 samples_SD_evs = np.zeros((nrows_samples, c_evs))
-                #AVG_evs = np.mean(evs, axis = 0)
                 AVG_evs = self.__tileRasterReader.statistics[:,2]
-                #AVG_evs = np.zeros(self.__tileRasterReader.nbands)
-                #AVG_evs = np.array([-6.75156445e-05, 6.99657587e-05, 1.92017693e-04, 7.52813351e+00, -1.61510647e-04,\
-                #                    -3.47519843e-04, 2.75366219e-04, 2.79413981e-04, -1.36469981e-04, -3.22890868e-04,\
-                #                    -2.04017536e-04, -3.75914167e-05])
-                #print '\nCOVARIATE MEAN:', AVG_evs, '\n'
-                #SUM_DIF_SQ_AVG = r_evs * Std_evs**2
-
-                #SUM_DIF_AVG = np.sum(evs - AVG_evs, axis = 0) ## == 0.0!!
-                #print 'SUM_DIF_AVG', SUM_DIF_AVG
 
                 for i in range(nrows_samples):
                     delta = samples_X[:,i].T - AVG_evs
-                    #tmp = SUM_DIF_SQ_AVG  + r_evs * delta**2
                     tmp = Std_evs**2 + delta**2
-                    #samples_SD_evs[i] = np.sqrt(tmp/r_evs)
                     samples_SD_evs[i] = np.sqrt(tmp)
 
-                #print '\nsamples_SD_evs:', samples_SD_evs, '\n'
                 self.__samples_SD_evs = np.array(samples_SD_evs).reshape(nrows_samples*c_evs).astype(np.float32)
-
                 self.__samples_X = np.array(samples_X).T.reshape(nrows_samples*c_evs).astype(np.float32)
-                #print 'samples_X:', samples_X.shape, samples_X.min()
 
                 # sample weights
                 self.__sample_weights = self.__soilsamples.weights.reshape(nrows_samples).astype(np.float32)
-                #print 'sample_weights:', sample_weights.shape, sample_weights.min()
 
                 # sample attributes
                 self.__sample_attributes = self.__soilsamples.attributes.reshape(nrows_samples).astype(np.float32)
-                #print 'sample_attributes:', sample_attributes.shape, sample_attributes.min()
                 self.__samples_stats_collected = True
 
             # hold predictions for instances in X
@@ -179,15 +118,6 @@ class iPSM:
                 #print platform.name
                 if platform.name == conf.OPENCL_CONFIG['Platform']:
                     PLATFORM = platform
-                    '''
-                    if os.environ['COMPUTERNAME'] == 'DU-7CQTHQ2' and 'NVIDIA CUDA' in platform.name:
-                        print '!!!!'
-                        #for device in platform.get_devices():
-                        #    if device.name == conf.OPENCL_CONFIG['Device']:
-                        DEVICE = platform.get_devices()[0]
-                        break
-                    else:
-                    '''
                     # Print each device per-platform
                     for device in platform.get_devices():
                         #print device.name
@@ -303,26 +233,17 @@ class iPSM:
             ## predict PIECE BY PIECE to avoid blowing up the GPU memory
             print 'DEVICE MEM QUOTA:', device_mem_quota / 1024.0**2, 'MB'
             print 'X SIZE:', X.nbytes / 1024.0**2, 'MB'
-            #print 'SINGLE_CPU:', single_cpu
             print ''
 
-            #if X.nbytes > device_mem_quota: # conf.DEVICE_TYPE == 'GPU' and
-                #print 'predict_opencl_tile() was called'
             N_LOCS = X.shape[0]
 
             y = np.zeros((N_LOCS, 2))
-
-            #N_CHUNKS = int(X.nbytes * 1.0 / (device_mem_quota) + 1.0)
-            #conf.CL_CHUNK_SIZE = int(X.nbytes / X[0].nbytes / N_CHUNKS + 1.0) ## number of rows in X
 
             ## CHUNK_SIZE SHOULD BE MULTIPLE OF DEVICE_MAX_WORK_ITEM_SIZES[0], e.g., x 1024
             if N_LOCS <= conf.DEVICE_MAX_WORK_ITEM_SIZES[0]:
                 N_CHUNKS = 1
                 conf.CL_CHUNK_SIZE = N_LOCS
             else:
-                #N_CHUNKS = max(2, int(math.ceil(X.nbytes/device_mem_quota)))
-                #conf.CL_CHUNK_SIZE = conf.DEVICE_MAX_WORK_ITEM_SIZES[0] * int(math.ceil(N_LOCS * 1.0 / N_CHUNKS / conf.DEVICE_MAX_WORK_ITEM_SIZES[0]))
-                #N_CHUNKS = int(math.ceil(N_LOCS * 1.0 / conf.CL_CHUNK_SIZE))
                 conf.CL_CHUNK_SIZE = conf.DEVICE_MAX_WORK_ITEM_SIZES[0] * int(math.floor(min(device_mem_quota, X.nbytes) / X[0].nbytes / conf.DEVICE_MAX_WORK_ITEM_SIZES[0]))
                 N_CHUNKS = int(math.ceil(N_LOCS * 1.0 / conf.CL_CHUNK_SIZE))
 
@@ -345,10 +266,6 @@ class iPSM:
 
                 n_accum_locs += conf.CL_CHUNK_SIZE
                 counter += 1
-            #else:
-                #print 'predict_opencl_atom() was called'
-            #    y = self.predict_opencl_atom(X, predict_class, single_cpu, opencl_config)
-
             return y
 
         except Exception as e:
@@ -401,16 +318,13 @@ class iPSM:
                                             geotransform = self.__tileRasterReader.geotransfrom, \
                                             projection = self.__tileRasterReader.projection, \
                                             nodata = self.__tileRasterReader.nodata)
-                #print 'started writing result...'
                 ## write predicted soil map
                 template_raster.updateRasterData(y[:,0])
                 t0 = time.time()
-                #print 'updateRasterData() took', time.time()-t0, 's\n'
                 template_raster.writeRasterGDAL(self.__outfns[0])
                 conf.TIME_KEEPING_DICT['parts']['write'].append(time.time()-t0)
                 ## write prediction uncertainty map
                 template_raster.updateRasterData(y[:,1])
-                #print 'updateRasterData() took', time.time()-t0, 's\n'
                 t1 = time.time()
                 template_raster.writeRasterGDAL(self.__outfns[1])
                 conf.TIME_KEEPING_DICT['parts']['write'].append(time.time()-t1)
@@ -420,7 +334,7 @@ class iPSM:
                 ## read in covariates tile by tile
                 if conf.TILE_XSIZE is None or conf.TILE_YSIZE is None:
                     #if conf.MULTITHREAD_READ:# and conf.DEVICE_TYPE == 'CPU':
-                    host_mem_quota /= 2
+                    host_mem_quota /= 4
                     factor = int(host_mem_quota / self.__tileRasterReader.estimateTileSize_MB() * (self.__tileRasterReader.ysize/self.__tileRasterReader.block_ysize_base))
                     print factor, self.__tileRasterReader.block_ysize_base, \
                           self.__tileRasterReader.block_ysize_base * factor
@@ -428,7 +342,7 @@ class iPSM:
                 print 'tile size:', self.__tileRasterReader.xsize, 'x', self.__tileRasterReader.ysize, \
                         self.__tileRasterReader.estimateTileSize_MB(), 'MB'
                 print 'raster size:', self.__tileRasterReader.ncols, 'x', self.__tileRasterReader.nrows
-                #sys.exit(0)
+
                 ## writer for writing out tiles of predicted soil map
                 soilmapwriter = gdalwrapper.tiledRasterWriter(self.__outfns[0], \
                                                       self.__tileRasterReader.nrows, \
@@ -447,9 +361,7 @@ class iPSM:
                 template_raster = raster.Raster()
                 template_data = None
                 X = []
-                #print 'working on tile:', self.__tileRasterReader.xoff, '/', self.__tileRasterReader.ncols, self.__tileRasterReader.yoff, '/', self.__tileRasterReader.nrows
-                #print 'started reading in tile', self.__tileRasterReader.xoff, '/', self.__tileRasterReader.ncols, \
-                #                                self.__tileRasterReader.yoff, '/', self.__tileRasterReader.nrows
+
                 t0 = time.time()
                 data, xoff, yoff, xsize, ysize = self.__tileRasterReader.readNextTile()
                 t1 = time.time()
@@ -477,8 +389,6 @@ class iPSM:
                         y = self.predict_opencl_tile(X, predict_class, single_cpu, opencl_config)
 
                     ##############################
-                    #print 'started writing out tile', self.__tileRasterReader.xoff, '/', self.__tileRasterReader.ncols, \
-                    #                                self.__tileRasterReader.yoff, '/', self.__tileRasterReader.nrows
                     t0 = time.time()
                     template_raster.createRaster(template_data, xoff=xoff, yoff=yoff, \
                                                 geotransform = self.__tileRasterReader.geotransfrom, \
@@ -500,11 +410,9 @@ class iPSM:
 
                     # reset X
                     X = []
-                    #print 'started reading in tile', self.__tileRasterReader.xoff, self.__tileRasterReader.yoff
                     t0 = time.time()
                     # read in the next tile
                     data, xoff, yoff, xsize, ysize = self.__tileRasterReader.readNextTile()
-                    #print data.shape, xoff, yoff, xsize, ysize
                     t1 = time.time()
                     conf.TIME_KEEPING_DICT['parts']['read'].append(t1 - t0)
                     print 'done reading in tile', self.__tileRasterReader.xoff, '/', self.__tileRasterReader.ncols, \
@@ -519,27 +427,3 @@ class iPSM:
 
         except Exception as e:
             raise
-
-def main():
-    ''' test driver
-    '''
-    Dir = r'D:\OneDrive - University of Denver\Data\Pyclipsm\anhui'
-    vrtfn = Dir + os.sep + 'covariates' + os.sep + 'covariates_90m.vrt'
-    samplefn = Dir + os.sep + 'samples' + os.sep + 'ah_2010.csv'
-                                                    # 'ah_all.csv' # 'ah_xc_all.csv' # 'xc_all.csv' # 'ah_2015.csv'
-    soilmapfn = Dir + os.sep + 'outputs' + os.sep + 'p.tif'
-    uncertmapfn = Dir + os.sep + 'outputs' + os.sep + 'u.tif'
-    ipsm = iPSM(vrtfn, samplefn, uncthreshold = 1.0, outfns = [soilmapfn, uncertmapfn])
-    ipsm.predict_opencl()
-
-if __name__ == "__main__":
-    #T0 = time.time()
-    main()
-
-    #conf.TIME_KEEPING_DICT['total'] = time.time() - T0
-    #print 'IN TOTAL IT TOOK', conf.TIME_KEEPING_DICT['total'], 's'
-
-    #import json
-    #jsonfn = r'D:\OneDrive - University of Denver\Data\Pyclipsm\anhui\predictions\log.json'
-    #with open(jsonfn, 'w') as fp:
-    #    json.dump(conf.TIME_KEEPING_DICT, fp)

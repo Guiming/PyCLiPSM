@@ -1,5 +1,5 @@
 # Author: Guiming Zhang - guiming.zhang@du.edu
-# Last update: Oct. 1 2019
+# Last update: May. 19 2020
 ### this is a configuration file specifying various parameters
 
 import sys, os
@@ -12,8 +12,6 @@ TILE_READ = False
 TILE_XSIZE = None # 45036 ## setting specific to covariates_10m.vrt (BlockXsize of the underlying geotiff)
 TILE_YSIZE = None #128 * 10 # None # 128 * 2 ## multiple of Blocksize in vrt
 #https://stackoverflow.com/questions/41742162/gdal-readasarray-for-vrt-extremely-slow
-
-#MULTITHREAD_N = 1 ## number of threads for reading raster
 
 NAIVE = False ## naive implementation of the iPSM algorithm
 
@@ -49,19 +47,14 @@ NOMINAL_KEYWORD_IN_FN = ['geo', 'geology']
 ### OpenCL platform and device specification (change according to the outputs from running pyopencl_test.py)
 
 #OPENCL_CONFIG = {'Platform': 'Intel(R) OpenCL', 'Device':'Intel(R) Core(TM) i9-8950HK CPU @ 2.90GHz'}
-#OPENCL_CONFIG = {'Platform': 'NVIDIA CUDA', 'Device':'Quadro P2000'}
+OPENCL_CONFIG = {'Platform': 'NVIDIA CUDA', 'Device':'Quadro P2000'}
 
-#OPENCL_CONFIG = {'Platform': 'Intel(R) OpenCL', 'Device':'Intel(R) Xeon(R) W-2145 CPU @ 3.70GHz'}
-#OPENCL_CONFIG = {'Platform': 'NVIDIA CUDA', 'Device':'Quadro P4000'}
-OPENCL_CONFIG = {'Platform': 'AMD Accelerated Parallel Processing', 'Device':'Iceland'}
 
 ## run opencl on single cpu core? if True, must use CPU device
 SINGLE_CPU = False
 
 #### number of CPU processes (parallel processing using pathos.multiprocesses)
 N_PROCESS = 4
-
-MP_POOL = True
 
 #### determine available device memory size using pyopencl
 import pyopencl as cl
@@ -86,9 +79,6 @@ def updateInfo():
     for platform in cl.get_platforms():
         PLT_IDX += 1
         if platform.name == OPENCL_CONFIG['Platform']:
-            #devices = platform.get_devices()
-            #print devices
-            #sys.exit(0)
             for device in platform.get_devices():
                 DVC_IDX += 1
                 if device.name == OPENCL_CONFIG['Device']:
@@ -104,8 +94,6 @@ def updateInfo():
     DEVICE_MAX_WORK_ITEM_SIZES = DEVICE.max_work_item_sizes
 
 updateInfo()
-#print 'HOST_MEM_SIZE:', HOST_MEM_SIZE / 1024**2, 'MB'
-#print 'DEVICE_MEM_SIZE:', DEVICE_MEM_SIZE / 1024**2, 'MB'
 
 if DEVICE_TYPE == 'GPU' and SINGLE_CPU:
     print 'Warning: Cannot run on single CPU thread on a GPU device. Exiting...'
