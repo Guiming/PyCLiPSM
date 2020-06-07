@@ -49,37 +49,8 @@ class Raster:
             serialize raster data from 2d [including NoData values] to 1d [excluding NoData values]
         '''
         try:
-            '''
-            self.__data1D = []
-            # serialize non-NoData values
-            for row in self.__data2D:
-                for val in row:
-                    if val != self.nodatavalue:
-                        self.__data1D.append(val)
-            self.__data1D = np.array(self.__data1D)
-            '''
             tmp = self.__data2D.flatten()
             self.__data1D = tmp[tmp != self.nodatavalue]
-
-        except Exception as e:
-            raise
-
-    def getCoords(self):
-        ''' N by 2 array holding the (x,y) coordinates of data points in __data1D,
-            needed by regression kriging
-        '''
-        try:
-            if self.__coords1D is None:
-                self.__coords1D = []
-                for i in range(self.nrows):
-                    for j in range(self.ncols):
-                        val = self.__data2D[i, j]
-                        if val != self.nodatavalue:
-                            x, y = self.rc2XY(i, j)
-                            self.__coords1D.append([x, y])
-                self.__coords1D = np.array(self.__coords1D)
-
-            return self.__coords1D
 
         except Exception as e:
             raise
@@ -100,13 +71,7 @@ class Raster:
             print e
             sys.exit(1)
 
-        '''
-        rasterSRS = osr.SpatialReference()
-        rasterSRS.ImportFromWkt(ds.GetProjection())
-        self.__prjString = rasterSRS.ExportToWkt()
-        '''
         self.__prjString = ds.GetProjection()
-
 
         #print self.__prjString
         gtrsfm = ds.GetGeoTransform()
@@ -222,15 +187,6 @@ class Raster:
             print 'cannot deserialize 1D to 2D, too many data'
             sys.exit(1)
         try:
-            '''
-            idx = 0
-            for row in range(self.nrows):
-                for col in range(self.ncols):
-                    val = self.__data2D[row][col]
-                    if val != self.nodatavalue:
-                        self.__data2D[row][col] = data1d[idx]
-                        idx += 1
-            '''
             self.__data2D[self.__data2D != self.nodatavalue] = data1d
             self.__data1D = np.copy(data1d)
 
