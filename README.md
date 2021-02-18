@@ -1,4 +1,11 @@
 # PyCLiPSM
+PyCLiPSM: Harnessing heterogeneous computing resources on CPUs and GPUs for accelerated digital soil mapping. Find more detail about the code in this paper: https://onlinelibrary.wiley.com/doi/full/10.1111/tgis.12730
+
+## Citation
+Zhang, G, Zhu, A‐X, Liu, J, Guo, S, Zhu, Y. PyCLiPSM: Harnessing heterogeneous computing resources on CPUs and GPUs for accelerated digital soil mapping. Transactions in GIS. 2021; 00: 1– 23. https://doi.org/10.1111/tgis.12730
+
+## Environment
+Linux/Windows/Mac
 
 ## Set up computing environment:
 1. Install GPU drivers. If you are using NVIDIA GPUs, OpenCL support is included in the driver (https://developer.nvidia.com/opencl). If you are using AMD GPU/CPU, install appropriate OpenCL drivers from ADM (This link provides helpful pointers https://github.com/microsoft/LightGBM/issues/1342). If you are using Intel GPU/CPU, install appropriate OpenCL drivers from Intel (e.g., https://software.intel.com/en-us/articles/opencl-drivers).    
@@ -16,6 +23,9 @@
 1. Prepare soil sample data and environmental covariate data following the example data in the "data" directory
 2. Change parameters (e.g., data directory, data file names, etc.) in PyCLiPSM_main.py or PyCLiPSM_tiled_main.py accordingly
 3. Run PyCLiPSM_main.py or PyCLiPSM_tiled_main.py: python PyCLiPSM_main.py or python PyCLiPSM_tiled_main.py
+
+## License
+Copyright 2021 Guiming Zhang. Distributed under MIT license.
 
 ## Contact
 guiming.zhang@du.edu
