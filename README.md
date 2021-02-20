@@ -8,7 +8,7 @@ Zhang, G, Zhu, A‐X, Liu, J, Guo, S, Zhu, Y. PyCLiPSM: Harnessing heterogeneous
 Linux/Windows/Mac
 
 ## Set up computing environment:
-1. Install GPU drivers. If you are using NVIDIA GPUs, OpenCL support is included in the driver (https://developer.nvidia.com/opencl). If you are using AMD GPU/CPU, install appropriate OpenCL drivers from ADM (This link provides helpful pointers https://github.com/microsoft/LightGBM/issues/1342). If you are using Intel GPU/CPU, install appropriate OpenCL drivers from Intel (e.g., https://software.intel.com/en-us/articles/opencl-drivers).    
+1. Install GPU drivers. If you are using NVIDIA GPUs, OpenCL support is included in the driver (https://developer.nvidia.com/opencl). If you are using AMD GPU/CPU, install appropriate OpenCL drivers from AMD (This link provides helpful pointers https://github.com/microsoft/LightGBM/issues/1342). If you are using Intel GPU/CPU, install appropriate OpenCL drivers from Intel (e.g., https://software.intel.com/en-us/articles/opencl-drivers).    
 2. It's assumed that you already have Python (version 2.7) installed. Anaconda is recommended for installing Python https://www.anaconda.com/distribution/. Note: Although PyCLiPSM was written with Python 2.7 (which reached the "end of life" as of as of January 1st, 2020), it should be straightforward to upgrade the code to Python 3.x.
 3. Install Python GDAL (https://pypi.org/project/GDAL/).
 4. Once OpenCL drivers, Python and Python GDAL are properly installed, you can use pip to install the PyOpenCL package (https://pypi.org/project/pyopencl/). 
