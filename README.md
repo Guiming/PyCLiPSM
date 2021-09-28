@@ -2,7 +2,7 @@
 PyCLiPSM: Harnessing heterogeneous computing resources on CPUs and GPUs for accelerated digital soil mapping. Find more detail about the code in this paper: https://onlinelibrary.wiley.com/doi/full/10.1111/tgis.12730 (an author's copy is included in this repository "2021 - TGIS - PyCLiPSM.pdf").
 
 ## Citation
-Zhang, G, Zhu, A‐X, Liu, J, Guo, S, Zhu, Y. PyCLiPSM: Harnessing heterogeneous computing resources on CPUs and GPUs for accelerated digital soil mapping. Transactions in GIS. 2021; 00: 1– 23. https://doi.org/10.1111/tgis.12730
+Zhang, G, Zhu, A‐X, Liu, J, Guo, S, Zhu, Y. PyCLiPSM: Harnessing heterogeneous computing resources on CPUs and GPUs for accelerated digital soil mapping. Transactions in GIS. 2021; 25(3): 1396-1418. https://doi.org/10.1111/tgis.12730
 
 ## Environment
 Linux/Windows/Mac
